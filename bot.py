@@ -1,10 +1,21 @@
 import os
+import sys
+import asyncio
 import logging
 import random
 import string
-import asyncio
 from datetime import datetime
 from dotenv import load_dotenv
+
+# --- FIX: Create event loop before Pyrogram import ---
+# This prevents the "no current event loop" error in Python 3.14+
+try:
+    asyncio.get_event_loop()
+except RuntimeError:
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+
+# --- Now import Pyrogram ---
 from pyrogram import Client, filters, enums
 from pyrogram.errors import UserNotParticipant, MessageIdInvalid, ChannelInvalid, ChannelPrivate
 from pyrogram.types import InlineKeyboardButton, InlineKeyboardMarkup, Message, CallbackQuery
@@ -467,29 +478,35 @@ async def cleanup_processing():
             logging.error(f"Cleanup error: {e}")
         
         await asyncio.sleep(60)
+
 # --- Start the Bot ---
-if __name__ == "__main__":
+async def main():
+    """Main async entry point for the bot."""
     if not ADMINS:
         logging.warning("No ADMIN_IDS set.")
     
-    # Start Flask server
-    flask_thread = Thread(target=run_flask)
-    flask_thread.daemon = True
+    # Start Flask web server in background thread
+    flask_thread = Thread(target=run_flask, daemon=True)
     flask_thread.start()
     
-    # Create event loop and run the bot
+    # Start cleanup task for user processing states
+    asyncio.create_task(cleanup_processing())
+    
+    logging.info("Bot starting...")
+    await app.start()
+    logging.info("Bot is now running!")
+    
     try:
-        # For Python 3.10+
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        
-        # Start cleanup task
-        loop.create_task(cleanup_processing())
-        
-        logging.info("Bot starting...")
-        app.run()
-        logging.info("Bot stopped.")
-    except KeyboardInterrupt:
-        logging.info("Bot stopped by user.")
+        # Keep the bot running until interrupted
+        await asyncio.Event().wait()
+    except (KeyboardInterrupt, asyncio.CancelledError):
+        logging.info("Shutting down...")
     finally:
-        loop.close()
+        await app.stop()
+        logging.info("Bot stopped.")
+
+if __name__ == "__main__":
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        logging.info("Bot terminated by user.")
