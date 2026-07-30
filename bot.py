@@ -467,7 +467,6 @@ async def cleanup_processing():
             logging.error(f"Cleanup error: {e}")
         
         await asyncio.sleep(60)
-
 # --- Start the Bot ---
 if __name__ == "__main__":
     if not ADMINS:
@@ -478,9 +477,19 @@ if __name__ == "__main__":
     flask_thread.daemon = True
     flask_thread.start()
     
-    # Start cleanup task
-    asyncio.get_event_loop().create_task(cleanup_processing())
-    
-    logging.info("Bot starting...")
-    app.run()
-    logging.info("Bot stopped.")
+    # Create event loop and run the bot
+    try:
+        # For Python 3.10+
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        
+        # Start cleanup task
+        loop.create_task(cleanup_processing())
+        
+        logging.info("Bot starting...")
+        app.run()
+        logging.info("Bot stopped.")
+    except KeyboardInterrupt:
+        logging.info("Bot stopped by user.")
+    finally:
+        loop.close()
